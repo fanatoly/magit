@@ -139,6 +139,15 @@
                         :order-by [(desc number)]]
                        (oref prj id)))))
 
+;;; Commands
+
+;;;###autoload
+(defun magit-pullreq-browse (pullreq)
+  "Visit the url corresponding to PULLREQ using a browser."
+  (interactive (list (magit-read-pullreq "Browse pull-request")))
+  (browse-url (magit-forge--format-url pullreq 'pullreq-url-format))
+  (oset pullreq unread-p nil))
+
 ;;; Utilities
 
 (defun magit-read-pullreq (prompt)
@@ -166,6 +175,7 @@
 
 (defvar magit-pullreq-section-map
   (let ((map (make-sparse-keymap)))
+    (define-key map [remap magit-browse-thing] 'magit-pullreq-browse)
     map))
 
 (defun magit-insert-pullreqs ()
