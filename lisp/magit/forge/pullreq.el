@@ -193,6 +193,12 @@
         (user-error "Branch `%s' already exists" branch))
       branch)))
 
+(defun magit-forge--pullreq-ref (pullreq)
+  (let ((branch (magit-forge--pullreq-branch pullreq)))
+    (or (and branch (magit-rev-verify branch) branch)
+        (let ((ref (format "refs/pullreqs/%s" (oref pullreq number))))
+          (and (magit-rev-verify ref) ref)))))
+
 ;;; Sections
 
 (defun magit-pullreq-at-point ()
@@ -216,8 +222,8 @@
       (insert ?\n))))
 
 (defun magit-insert-pullreq (pullreq &optional width)
-  (with-slots (number title unread-p closed) pullreq
-    (magit-insert-section (pullreq pullreq)
+  (with-slots (number title unread-p closed base-ref) pullreq
+    (magit-insert-section (pullreq pullreq t)
       (insert
        (format (if width
                    (format "%%-%is %%s\n" (1+ width))
@@ -227,7 +233,12 @@
                 nil (propertize title 'face
                                 (cond (unread-p 'magit-topic-unread)
                                       (closed   'magit-topic-closed)
-                                      (t        'magit-topic-open)))))))))
+                                      (t        'magit-topic-open))))))
+      (magit-insert-heading)
+      (when-let (ref (magit-forge--pullreq-ref pullreq))
+        (cl-letf (((symbol-function #'magit-cancel-section) (lambda ())))
+          (magit-insert-log (format "%s..%s" base-ref ref)
+                            magit-log-section-arguments))))))
 
 ;;; _
 (provide 'magit/forge/pullreq)
