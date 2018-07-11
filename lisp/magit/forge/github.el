@@ -72,46 +72,58 @@ query ($owner:String!, $name:String!) {
 (cl-defmethod magit-forge--pull-issues ((prj magit-github-project)
                                         &optional number)
   (emacsql-with-transaction (magit-db)
-    (mapc #'closql-delete (oref prj issues))
-    (dolist (i (if number
-                   (list (magit-forge--fetch-issue prj number))
-                 (magit-forge--fetch-issues prj)))
-      (let-alist i
-        (let* ((issue-id (magit-forge--issue-id prj .number))
-               (issue
-                (magit-forge-issue
-                 :id        issue-id
-                 :project   (oref prj id)
-                 :number    .number
-                 :state     (intern (downcase .state))
-                 :author    .author
-                 :title     .title
-                 :created   .createdAt
-                 :updated   .updatedAt
-                 :closed    .closedAt
-                 :locked-p  .locked
-                 :milestone .milestone
-                 :body      (magit-forge--sanitize-string .body))))
-          (closql-insert (magit-db) issue)
-          (dolist (c .comments)
-            (let-alist c
-              (let ((post
-                     (magit-forge-issue-post
-                      :id      (format "%s:%s" issue-id .databaseId)
-                      :issue   issue-id
-                      :number  .databaseId
-                      :author  .author
-                      :created .createdAt
-                      :updated .updatedAt
-                      :body    (magit-forge--sanitize-string .body))))
-                (closql-insert (magit-db) post)))))))))
+    (let ((until (and (not number)
+                      (caar (magit-sql [:select [updated] :from issue
+                                        :where (= project $s1)
+		                        :order-by [(desc updated)]
+                                        :limit 1]
+                                       (oref prj id))))))
+      (dolist (i (if number
+                     (list (magit-forge--fetch-issue prj number))
+                   (magit-forge--fetch-issues prj nil until)))
+        (let-alist i
+          (when (or (not until) (string> .updatedAt until)) ; if
+            (let* ((issue-id (magit-forge--issue-id prj .number))
+                   (issue
+                    (magit-forge-issue
+                     :id        issue-id
+                     :project   (oref prj id)
+                     :number    .number
+                     :state     (intern (downcase .state))
+                     :author    .author
+                     :title     .title
+                     :created   .createdAt
+                     :updated   .updatedAt
+                     :closed    .closedAt
+                     :locked-p  .locked
+                     :milestone .milestone
+                     :body      (magit-forge--sanitize-string .body))))
+              ;; (message "+i+ %s    %s    %s" .number until .updatedAt)
+              (closql-insert (magit-db) issue)
+              (dolist (c .comments)
+                (let-alist c
+                  (let ((post
+                         (magit-forge-issue-post
+                          :id      (format "%s:%s" issue-id .databaseId)
+                          :issue   issue-id
+                          :number  .databaseId
+                          :author  .author
+                          :created .createdAt
+                          :updated .updatedAt
+                          :body    (magit-forge--sanitize-string .body))))
+                    (closql-insert (magit-db) post)))))
+            ;; (message "-i- %s    %s    %s" .number until .updatedAt)
+            ))))))
 
 (cl-defmethod magit-forge--fetch-issues ((prj magit-github-project)
-                                         &optional after)
+                                         &optional after until)
+  ;; (message "-I- %s %s ---" after until)
   (magit--ghub-topic-fetch prj "\
     query ($owner:String!, $name:String!, $after:String) {
       repository(owner:$owner, name:$name) {
-        issues(first:100, after:$after) {
+        issues(first:100,
+               after:$after,
+               orderBy: { field:UPDATED_AT, direction:DESC } ) {
           pageInfo { endCursor hasNextPage }
           edges {
             node {
@@ -135,13 +147,19 @@ query ($owner:String!, $name:String!) {
                     updatedAt
                     body }}}}}}}}"
     `((after    . ,after))
-    `((issues   . ,(lambda (prj loc node)
+    `((issues   . ,(lambda (prj _loc node)
                      (let-alist (cdr node)
-                       (if .pageInfo.hasNextPage
-                           (nconc (nth 2 node)
-                                  (magit-forge--fetch-issues
-                                   prj .pageInfo.endCursor))
-                         (nth 2 node)))))
+                       (let ((issues (nth 2 node)))
+                         (if (and .pageInfo.hasNextPage
+                                  (or (not until)
+                                      (string<
+                                       until
+                                       (cdr (assq 'updatedAt
+                                                  (car (last issues)))))))
+                             (nconc issues
+                                    (magit-forge--fetch-issues
+                                     prj .pageInfo.endCursor until))
+                           issues)))))
       (comments . magit-forge--fetch-issue-comments-1))))
 
 (cl-defmethod magit-forge--fetch-issue ((prj magit-github-project) number)
@@ -215,53 +233,66 @@ query ($owner:String!, $name:String!) {
 (cl-defmethod magit-forge--pull-pullreqs ((prj magit-github-project)
                                           &optional number)
   (emacsql-with-transaction (magit-db)
-    (dolist (p (if number
-                   (list (magit-forge--fetch-pullreq prj number))
-                 (magit-forge--fetch-pullreqs prj)))
-      (let-alist p
-        (let* ((pullreq-id (magit-forge--pullreq-id prj .number))
-               (pullreq
-                (magit-forge-pullreq
-                 :id           pullreq-id
-                 :project      (oref prj id)
-                 :number       .number
-                 :state        (intern (downcase .state))
-                 :author       .author
-                 :title        .title
-                 :created      .createdAt
-                 :updated      .updatedAt
-                 :closed       .closedAt
-                 :merged       .mergedAt
-                 :locked-p     .locked
-                 :editable-p   .maintainerCanModify
-                 :cross-repo-p .isCrossRepository
-                 :base-ref     .baseRef.name
-                 :base-repo    .baseRef.repository.nameWithOwner
-                 :head-ref     .headRef.name
-                 :head-user    .headRef.repository.owner
-                 :head-repo    .headRef.repository.nameWithOwner
-                 :milestone    .milestone
-                 :body         (magit-forge--sanitize-string .body))))
-          (closql-insert (magit-db) pullreq)
-          (dolist (p .comments)
-            (let-alist p
-              (let ((post
-                     (magit-forge-pullreq-post
-                      :id      (format "%s:%s" pullreq-id .databaseId)
-                      :pullreq pullreq-id
-                      :number  .databaseId
-                      :author  .author
-                      :created .createdAt
-                      :updated .updatedAt
-                      :body    (magit-forge--sanitize-string .body))))
-                (closql-insert (magit-db) post)))))))))
+    (let ((until (and (not number)
+                      (caar (magit-sql [:select [updated] :from pullreq
+                                        :where (= project $s1)
+		                        :order-by [(desc updated)]
+                                        :limit 1]
+                                       (oref prj id))))))
+      (dolist (p (if number
+                     (list (magit-forge--fetch-pullreq prj number))
+                   (magit-forge--fetch-pullreqs prj nil until)))
+        (let-alist p
+          (when (or (not until) (string> .updatedAt until)) ; if
+            (let* ((pullreq-id (magit-forge--pullreq-id prj .number))
+                   (pullreq
+                    (magit-forge-pullreq
+                     :id           pullreq-id
+                     :project      (oref prj id)
+                     :number       .number
+                     :state        (intern (downcase .state))
+                     :author       .author
+                     :title        .title
+                     :created      .createdAt
+                     :updated      .updatedAt
+                     :closed       .closedAt
+                     :merged       .mergedAt
+                     :locked-p     .locked
+                     :editable-p   .maintainerCanModify
+                     :cross-repo-p .isCrossRepository
+                     :base-ref     .baseRef.name
+                     :base-repo    .baseRef.repository.nameWithOwner
+                     :head-ref     .headRef.name
+                     :head-user    .headRef.repository.owner
+                     :head-repo    .headRef.repository.nameWithOwner
+                     :milestone    .milestone
+                     :body         (magit-forge--sanitize-string .body))))
+              ;; (message "+p+ %s    %s    %s" .number until .updatedAt)
+              (closql-insert (magit-db) pullreq)
+              (dolist (p .comments)
+                (let-alist p
+                  (let ((post
+                         (magit-forge-pullreq-post
+                          :id      (format "%s:%s" pullreq-id .databaseId)
+                          :pullreq pullreq-id
+                          :number  .databaseId
+                          :author  .author
+                          :created .createdAt
+                          :updated .updatedAt
+                          :body    (magit-forge--sanitize-string .body))))
+                    (closql-insert (magit-db) post)))))
+            ;; (message "-p- %s    %s    %s" .number until .updatedAt)
+            ))))))
 
 (cl-defmethod magit-forge--fetch-pullreqs ((prj magit-github-project)
-                                           &optional after)
+                                           &optional after until)
+  ;; (message "-P- %s %s ---" after until)
   (magit--ghub-topic-fetch prj "\
     query ($owner:String!, $name:String!, $after:String) {
       repository(owner:$owner, name:$name) {
-        pullRequests(first:100, after:$after) {
+        pullRequests(first:100,
+                     after:$after,
+                     orderBy: { field:UPDATED_AT, direction:DESC } ) {
           pageInfo { endCursor hasNextPage }
           edges {
             node {
@@ -298,11 +329,17 @@ query ($owner:String!, $name:String!) {
     `((after . ,after))
     `((pullRequests . ,(lambda (prj _loc node)
                          (let-alist (cdr node)
-                           (if .pageInfo.hasNextPage
-                               (nconc (nth 2 node)
-                                      (magit-forge--fetch-pullreqs
-                                       prj .pageInfo.endCursor))
-                             (nth 2 node)))))
+                           (let ((pullreqs (nth 2 node)))
+                             (if (and .pageInfo.hasNextPage
+                                      (or (not until)
+                                          (string<
+                                           until
+                                           (cdr (assq 'updatedAt
+                                                      (car (last pullreqs)))))))
+                                 (nconc pullreqs
+                                        (magit-forge--fetch-pullreqs
+                                         prj .pageInfo.endCursor until))
+                               pullreqs)))))
       (comments     . magit-forge--fetch-pullreq-comments-1))))
 
 (cl-defmethod magit-forge--fetch-pullreq ((prj magit-github-project) number)
