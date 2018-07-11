@@ -184,6 +184,9 @@
 
 (defun magit-forge--pullreq-branch (pullreq &optional assert-new)
   (with-slots (head-ref number cross-repo-p editable-p) pullreq
+    (unless head-ref
+      ;; Also see magit-forge--fetch-pullreqs(magit-gitlab-project).
+      (error "Cannot do that with this pullreq due limitations of Gitlab"))
     (let ((branch head-ref))
       (when (and cross-repo-p
                  (or (not editable-p)
