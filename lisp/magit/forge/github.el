@@ -428,6 +428,61 @@ query ($owner:String!, $name:String!) {
                       .pageInfo.endCursor))
           (nth 2 node)))))
 
+;;; Notifications
+
+(cl-defmethod magit-forge--pull-notifications
+  ((_class (subclass magit-github-project)) githost &optional prj)
+  (emacsql-with-transaction (magit-db)
+    (magit-sql [:drop-table-if-exists notification])
+    (magit-sql [:create-table notification $S1]
+               (cdr (assq 'notification magit--db-table-schemata)))
+    (if-let (spec (assoc githost magit-forge-alist))
+        (pcase-let ((`(,_ ,apihost ,forge ,_) spec))
+          (dolist (n (magit--ghub-get
+                      nil (if prj
+                              (format "/repos/%s/%s/notifications"
+                                      (oref prj owner)
+                                      (oref prj name))
+                            "/notifications")
+                      '((all . "true"))
+                      :host apihost :unpaginate t))
+            (let-alist n
+              (let* ((type (intern (downcase .subject.type)))
+                     (type (if (eq type 'pullrequest) 'pullreq type))
+                     (prj (magit-forge-get-project
+                           (list githost
+                                 .repository.owner.login
+                                 .repository.name)
+                           nil t))
+                     (number (and (string-match "[0-9]*\\'" .subject.url)
+                                  (string-to-number
+                                   (match-string 0 .subject.url))))
+                     (notification-id (format "%s:%s" (oref prj id) .id)))
+                ;; FIXME just because the object exists,
+                ;; that doesn't mean it is up-to-date.
+                (pcase type
+                  ('issue
+                   (oset (magit-forge-get-issue prj number t)
+                         unread-p .unread))
+                  ('pullreq
+                   (oset (magit-forge-get-pullreq prj number t)
+                         unread-p .unread)))
+                (closql-insert
+                 (magit-db)
+                 (magit-forge-notification
+                  :id           notification-id
+                  :project      (oref prj id)
+                  :forge        forge
+                  :reason       (intern (downcase .reason))
+                  :unread-p     .unread
+                  :last-read    .last_read_at
+                  :updated      .updated_at
+                  :title        .subject.title
+                  :type         type
+                  :topic        number
+                  :url          .subject.url))))))
+      (error "No entry for %S in magit-forge-alist" githost))))
+
 ;;; Utilities
 
 (cl-defun magit--ghub-get (prj resource

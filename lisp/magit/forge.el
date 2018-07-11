@@ -220,6 +220,7 @@ determined, then raise an error.")
 (require 'magit/forge/topic)
 (require 'magit/forge/issue)
 (require 'magit/forge/pullreq)
+(require 'magit/forge/notify)
 
 (require 'magit/forge/github)
 (require 'magit/forge/gitlab)
@@ -233,9 +234,18 @@ determined, then raise an error.")
   (if-let (prj (magit-forge-get-project t))
       (progn (magit-forge--pull-issues prj)
              (magit-forge--pull-pullreqs prj)
+             (magit-forge--pull-notifications (eieio-object-class prj)
+                                              (oref prj githost)
+                                              prj)
              (oset prj sparse-p nil)
              (magit-refresh))
     (error "Cannot determine forge project for %s" (magit-toplevel))))
+
+;;;###autoload
+(defun magit-forge-pull-notifications ()
+  (interactive)
+  (pcase-dolist (`(,githost ,_ ,_ ,class) magit-forge-alist)
+    (magit-forge--pull-notifications class githost)))
 
 ;;;###autoload
 (defun magit-forge-add-pullreq-refspec ()
