@@ -38,8 +38,11 @@
 The following %-sequences are supported:
 
 `%a' The forge nickname of the author.
+`%A' The real name of the author. TODO
 `%c' The absolute creation date.
-`%C' The relative creation date."
+`%C' The relative creation date.
+`%g' The gravatar avatar image. TODO
+`%G' The forge avatar image. TODO"
   :package-version '(magit . "2.90.0")
   :group 'magit-forge
   :type 'string)
