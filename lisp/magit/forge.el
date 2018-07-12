@@ -232,13 +232,22 @@ determined, then raise an error.")
   "Pull topics from the forge project of the current repository."
   (interactive)
   (if-let (prj (magit-forge-get-project t))
-      (progn (magit-forge--pull-issues prj)
-             (magit-forge--pull-pullreqs prj)
-             (magit-forge--pull-notifications (eieio-object-class prj)
-                                              (oref prj githost)
-                                              prj)
-             (oset prj sparse-p nil)
-             (magit-refresh))
+      (progn
+        (magit-forge--pull-issues prj)
+        (magit-forge--pull-pullreqs prj)
+        (magit-forge--pull-notifications (eieio-object-class prj)
+                                         (oref prj githost)
+                                         prj)
+        (oset prj sparse-p nil)
+        (if-let ((remote  (oref prj remote))
+                 (refspec (oref-default prj pullreq-refspec)))
+            (progn
+              (unless (member refspec (magit-get-all "remote" remote "fetch"))
+                (magit-call-git "config" "--add"
+                                (format "remote.%s.fetch" remote)
+                                refspec))
+              (magit-git-fetch remote (magit-fetch-arguments)))
+          (magit-refresh)))
     (error "Cannot determine forge project for %s" (magit-toplevel))))
 
 ;;;###autoload
