@@ -129,7 +129,8 @@ then don't do so for any sections."
                  (const  :tag "Cache visibility of all sections" t)
                  (repeat :tag "Cache visibility for section types" symbol)))
 
-(defcustom magit-section-initial-visibility-alist nil
+(defcustom magit-section-initial-visibility-alist
+  nil
   "Alist controlling the initial visibility of sections.
 
 Each element maps a section type or lineage to the initial
@@ -144,7 +145,7 @@ be used, see `magit-section-match'.
 
 Currently this option is only used to override hardcoded defaults,
 but in the future it will also be used set the defaults."
-  :package-version '(magit . "2.12.0")
+  :package-version '(magit . "2.90.0")
   :group 'magit-section
   :type '(alist :key-type (sexp :tag "Section type/lineage")
                 :value-type (choice (const hide)
@@ -205,13 +206,37 @@ never modify it.")
   "Return the section at point."
   (or (get-text-property (point) 'magit-section) magit-root-section))
 
-(defun magit-section-ident (section)
+(defun magit-section-ident (section &optional shared-ident)
   "Return an unique identifier for SECTION.
-The return value has the form ((TYPE . VALUE)...)."
-  (with-slots (type value parent) section
-    (cons (cons type
-                (cond ((not (memq type '(unpulled unpushed))) value)
-                      ((string-match-p "@{upstream}" value) value)
+
+The return value has the form ((TYPE . VALUE)...), where TYPE is
+the type of the section and VALUE is its value.
+
+For a few sections this function returns a VALUE that is not the
+actual value of the section but only a representation thereof.
+
+A few distinct sections should be treated as the same section in
+certain special contexts.  If SHARED-IDENT is non-nil, then, for
+these sections only, TYPE and VALUE are not the actual type and
+value of the section.
+
+Both of these special cases currently only concern the sections
+listing unpushed, unpulled and recent commits in the status
+buffer and you should be able to ignore these complications
+unless you are doing something that concerns the visibily of
+these sections."
+  (let ((type (oref section type))
+        (value (oref section value)))
+    (cons (cons (cond ((or (not shared-ident)
+                           (not (memq type '(recent unpushed)))
+                           (not (equal value "${upstream}..")))
+                       type)
+                      (t
+                       (setq value nil)
+                       'recent))
+                (cond ((or (not (memq type '(unpulled unpushed)))
+                           (string-match-p "@{upstream}" value))
+                       value)
                       ;; Unfortunately Git chokes on "@{push}" when
                       ;; the value of `push.default' does not allow a
                       ;; 1:1 mapping.  Arbitrary commands may consult
@@ -221,8 +246,8 @@ The return value has the form ((TYPE . VALUE)...)."
                       ;; so we have to use another value here.
                       ((string-match-p "\\`\\.\\." value) "..@{push}")
                       (t "@{push}..")))
-          (and parent
-               (magit-section-ident parent)))))
+          (and-let* ((parent (oref section parent)))
+            (magit-section-ident parent)))))
 
 (defun magit-get-section (ident &optional root)
   "Return the section identified by IDENT.
@@ -783,6 +808,7 @@ anything this time around.
                          :parent magit-insert-section--parent)))
        (oset ,s hidden
              (if-let ((value (run-hook-with-args-until-success
+                              ;; This calls magit-section-cached-visibility
                               'magit-section-set-visibility-hook ,s)))
                  (eq value 'hide)
                (if-let ((incarnation (and magit-insert-section--oldroot
@@ -1078,13 +1104,13 @@ invisible."
 
 (defun magit-section-cached-visibility (section)
   "Set SECTION's visibility to the cached value."
-  (cdr (assoc (magit-section-ident section)
+  (cdr (assoc (magit-section-ident section t)
               magit-section-visibility-cache)))
 
 (cl-defun magit-section-cache-visibility
     (&optional (section magit-insert-section--current))
   ;; Emacs 25's `alist-get' lacks TESTFN.
-  (let* ((id  (magit-section-ident section))
+  (let* ((id  (magit-section-ident section t))
          (elt (assoc id magit-section-visibility-cache))
          (val (if (oref section hidden) 'hide 'show)))
     (if elt

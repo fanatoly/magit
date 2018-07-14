@@ -1598,23 +1598,8 @@ then show the last `magit-log-section-commit-count' commits."
   (let ((upstream (magit-rev-parse "@{upstream}")))
     (if (or (not upstream)
             (magit-rev-ancestor-p "HEAD" upstream))
-        (magit-insert-recent-commits
-         (--if-let (and magit-insert-section--oldroot
-                        (magit-get-section
-                         '((unpushed . "@{upstream}..")
-                           (status))
-                         magit-insert-section--oldroot))
-             (oref it hidden)
-           nil))
-      (magit-insert-unpushed-to-upstream
-       (--if-let (and magit-insert-section--oldroot
-                      (magit-get-section
-                       `((recent . ,(format "HEAD~%s..HEAD"
-                                            magit-log-section-commit-count))
-                         (status))
-                       magit-insert-section--oldroot))
-           (oref it hidden)
-         t)))))
+        (magit-insert-recent-commits nil)
+      (magit-insert-unpushed-to-upstream t))))
 
 (defun magit-insert-unpushed-to-upstream (&optional collapse)
   "Insert commits that haven't been pushed to the upstream yet."
