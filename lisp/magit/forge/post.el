@@ -62,7 +62,7 @@
                               (concat "magit/posts/" (oref post id))))))
     (when (file-exists-p file)
       (delete-file file))
-    (if-let (buf (find-buffer-visiting file))
+    (if-let ((buf (find-buffer-visiting file)))
         (pop-to-buffer buf)
       (make-directory (file-name-directory file) t)
       (find-file-other-window file)

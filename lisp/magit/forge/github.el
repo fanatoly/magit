@@ -436,7 +436,7 @@ query ($owner:String!, $name:String!) {
     (magit-sql [:drop-table-if-exists notification])
     (magit-sql [:create-table notification $S1]
                (cdr (assq 'notification magit--db-table-schemata)))
-    (if-let (spec (assoc githost magit-forge-alist))
+    (if-let ((spec (assoc githost magit-forge-alist)))
         (pcase-let ((`(,_ ,apihost ,forge ,_) spec))
           (dolist (n (magit--ghub-get
                       nil (if prj
@@ -537,7 +537,7 @@ query ($owner:String!, $name:String!) {
                          (cadr node)
                        node))
                     (_
-                     (if-let (fn (cdr (assq key filters)))
+                     (if-let ((fn (cdr (assq key filters))))
                          (funcall fn prj loc node)
                        node)))))
       (unless (eq node* node)

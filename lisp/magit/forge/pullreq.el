@@ -122,7 +122,7 @@
                   (magit-forge-get-pullreq prj number)))))
 
 (cl-defmethod magit-forge-get-pullreq ((number integer))
-  (when-let (prj (magit-forge-get-project nil))
+  (when-let ((prj (magit-forge-get-project nil)))
     (magit-forge-get-pullreq prj number)))
 
 (cl-defmethod magit-forge-list-pullreqs ((prj magit-forge-project) &optional limit)
@@ -253,7 +253,7 @@
         (magit--insert-pullreq pullreq)))))
 
 (defun magit--insert-pullreq (pullreq)
-  (when-let (ref (magit-forge--pullreq-ref pullreq))
+  (when-let ((ref (magit-forge--pullreq-ref pullreq)))
     (cl-letf (((symbol-function #'magit-cancel-section) (lambda ())))
       (magit-insert-log (format "%s..%s" (oref pullreq base-ref) ref)
                         magit-log-section-arguments))))

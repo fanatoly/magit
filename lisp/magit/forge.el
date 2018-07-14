@@ -183,7 +183,7 @@ determined, then raise an error.")
      (?n . ,(oref prj name)))))
 
 (defun magit-forge--split-remote-url (remote)
-  (when-let (url (magit-git-string "remote" "get-url" remote))
+  (when-let ((url (magit-git-string "remote" "get-url" remote)))
     (and (string-match magit--forge-url-regexp url)
          (list (match-string 1 url)
                (match-string 3 url)
@@ -195,7 +195,7 @@ determined, then raise an error.")
          (cl-caddr (assoc (match-string 1 url) magit-forge-alist)))))
 
 (defun magit--forge-remote-p (remote)
-  (when-let (url (magit-git-string "remote" "get-url" remote))
+  (when-let ((url (magit-git-string "remote" "get-url" remote)))
     (magit--forge-url-p url)))
 
 (defun magit--forge-url-equal (urlA urlB)

@@ -48,7 +48,7 @@
 
 (cl-defmethod magit-forge-get-project ((notify magit-forge-notification))
   "Return the object for the project that NOTIFY belongs to."
-  (when-let (id (oref notify project))
+  (when-let ((id (oref notify project)))
     (closql-get (magit-db) id 'magit-forge-project)))
 
 ;;; Utilities
@@ -66,7 +66,7 @@
 ;;; Sections
 
 (defun magit-insert-notifications ()
-  (when-let (ns (magit-forge--list-notifications-all))
+  (when-let ((ns (magit-forge--list-notifications-all)))
     (magit-insert-section (notifications)
       (magit-insert-heading "Notifications:")
       (pcase-dolist (`(,_ . ,ns) (--group-by (oref it project) ns))

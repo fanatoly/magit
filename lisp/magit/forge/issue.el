@@ -92,7 +92,7 @@
                   (magit-forge-get-issue prj number)))))
 
 (cl-defmethod magit-forge-get-issue ((number integer))
-  (when-let (prj (magit-forge-get-project nil))
+  (when-let ((prj (magit-forge-get-project nil)))
     (magit-forge-get-issue prj number)))
 
 (cl-defmethod magit-forge-list-issues ((prj magit-forge-project) &optional limit)
