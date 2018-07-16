@@ -79,6 +79,8 @@
   :group 'magit-faces)
 
 ;;; Common
+(defun magit-rebase-command ()
+  (if (file-exists-p (magit-git-dir "rebase-recursive")) "rbr" "rebase"))
 
 ;;;###autoload
 (defun magit-sequencer-continue ()
@@ -451,7 +453,7 @@ This discards all changes made since the sequence started."
 
 ;;;###autoload (autoload 'magit-rebase-popup "magit-sequence" nil t)
 (magit-define-popup magit-rebase-popup
-  "Key menu for rebasing."
+  "Key menu for rebasing. ARGGGG"
   :man-page "git-rebase"
   :switches '((?k "Keep empty commits"       "--keep-empty")
               (?p "Preserve merges"          "--preserve-merges")
@@ -473,6 +475,7 @@ This discards all changes made since the sequence started."
                   magit-rebase-onto-upstream)
               (?e "elsewhere"               magit-rebase)
               "Rebase"
+              (?r "recursively"      magit-rebase-recursive)
               (?i "interactively"      magit-rebase-interactive)
               (?m "to modify a commit" magit-rebase-edit-commit)
               (?s "a subset"           magit-rebase-subset)
@@ -488,6 +491,9 @@ This discards all changes made since the sequence started."
 
 (defun magit-git-rebase (target args)
   (magit-run-git-sequencer "rebase" target args))
+
+(defun magit-git-rebase-recursive (args)
+  (magit-run-git-sequencer "rbr" args))
 
 ;;;###autoload
 (defun magit-rebase-onto-pushremote (args)
@@ -522,6 +528,17 @@ selected branch TARGET are being rebased."
   (message "Rebasing...")
   (magit-git-rebase target args)
   (message "Rebasing...done"))
+
+;;;###autoload
+(defun magit-rebase-recursive (args)
+  "Rebase the current branch onto a branch read in the minibuffer.
+All commits that are reachable from `HEAD' but not from the
+selected branch TARGET are being rebased."
+  (interactive (list (magit-rebase-arguments)))
+  (message "Recursively Rebasing...")
+  (magit-git-rebase-recursive args)
+  (message "Recursively Rebasing...done"))
+
 
 ;;;###autoload
 (defun magit-rebase-subset (newbase start args)
@@ -668,11 +685,11 @@ edit.  With a prefix argument the old message is reused as-is."
         (if noedit
             (let ((process-environment process-environment))
               (push "GIT_EDITOR=true" process-environment)
-              (magit-run-git-async "rebase" "--continue")
+              (magit-run-git-async (magit-rebase-command) "--continue")
               (set-process-sentinel magit-this-process
                                     #'magit-sequencer-process-sentinel)
               magit-this-process)
-          (magit-run-git-sequencer "rebase" "--continue")))
+          (magit-run-git-sequencer (magit-rebase-command) "--continue")))
     (user-error "No rebase in progress")))
 
 ;;;###autoload
@@ -681,7 +698,7 @@ edit.  With a prefix argument the old message is reused as-is."
   (interactive)
   (unless (magit-rebase-in-progress-p)
     (user-error "No rebase in progress"))
-  (magit-run-git-sequencer "rebase" "--skip"))
+  (magit-run-git-sequencer (magit-rebase-command) "--skip"))
 
 ;;;###autoload
 (defun magit-rebase-edit ()
@@ -698,7 +715,7 @@ edit.  With a prefix argument the old message is reused as-is."
   (unless (magit-rebase-in-progress-p)
     (user-error "No rebase in progress"))
   (magit-confirm 'abort-rebase "Abort this rebase")
-  (magit-run-git "rebase" "--abort"))
+  (magit-run-git (magit-rebase-command) "--abort"))
 
 (defun magit-rebase-in-progress-p ()
   "Return t if a rebase is in progress."
